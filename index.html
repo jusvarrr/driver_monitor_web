@@ -122,6 +122,40 @@
     const markers = {};
     let pollingInterval = null;
 
+    let lastMarkId = 0;
+    let localMarkCount = 0;
+    const loadedMarkIds = new Set();
+
+    function syncDriverMarks() {
+        fetch(`/fetchmarked/${lastMarkId}/${localMarkCount}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.sync) return;
+
+                if (data.zones && data.zones.length > 0) {
+                    data.zones.forEach(zone => {
+                        if (!loadedMarkIds.has(zone.id_MarkedLocation)) {
+                            
+                            addMarkToMap({
+                                name: zone.mark_name,
+                                long: zone.lon,
+                                lat: zone.lat,
+                                info: zone.info,
+                                type: zone.mark_type
+                            });
+
+                            if (zone.id_MarkedLocation > lastMarkId) {
+                                lastMarkId = zone.id_MarkedLocation;
+                            }
+                            loadedMarkIds.add(zone.id_MarkedLocation);
+                        }
+                    });
+                }
+                localMarkCount = data.count || localMarkCount;
+            })
+            .catch(err => console.error("Error syncing driver marks:", err));
+    }
+
     function toggleAuthMode() {
         isRegisterMode = !isRegisterMode;
         document.getElementById('auth-title').innerText = isRegisterMode ? "Registration" : "Login";
@@ -238,63 +272,6 @@
             });
     }
 
-    const mockKaunasRoute = [
-        [23.9645, 54.8963],
-        [23.9472, 54.8941],
-        [23.9261, 54.9125],
-        [23.9312, 54.9285],
-        [23.9050, 54.9360],
-        [23.8894, 54.9388]
-    ];
-
-    function loadHistoryTrack() {
-        if (!selectedDriverSerial) {
-            alert("Choose driver!");
-            return;
-        }
-
-        console.log(`Loading history: ${selectedDriverSerial}`);
-
-        const geojsonData = {
-            "type": "Feature",
-            "properties": {},
-            "geometry": {
-                "type": "LineString",
-                "coordinates": mockKaunasRoute
-            }
-        };
-
-        if (map.getSource('history-route')) {
-            map.getSource('history-route').setData(geojsonData);
-        } else {
-            map.addSource('history-route', {
-                'type': 'geojson',
-                'data': geojsonData
-            });
-
-            map.addLayer({
-                'id': 'history-layer',
-                'type': 'line',
-                'source': 'history-route',
-                'layout': {
-                    'line-join': 'round',
-                    'line-cap': 'round'
-                },
-                'paint': {
-                    'line-color': '#1976d2',
-                    'line-width': 5,
-                    'line-dasharray': [1, 1]
-                }
-            });
-        }
-
-        map.flyTo({
-            center: mockKaunasRoute[0],
-            zoom: 12,
-            speed: 0.8
-        });
-    }
-
     function updateDriverLocation() {
         if (!selectedDriverSerial) return;
 
@@ -322,14 +299,14 @@
             })
             .catch(err => {
                 console.error("Polling error:", err);
-                document.getElementById('status').innerText = "Netwrok error";
+                document.getElementById('status').innerText = "Network error";
                 document.getElementById('status').style.color = "red";
             });
     }
 
     function selectDriver(serial) {
         selectedDriverSerial = serial;
-        console.log("Dislayed device:", serial);
+        console.log("Displayed device:", serial);
 
         if (pollingInterval) clearInterval(pollingInterval);
         
@@ -342,8 +319,6 @@
 
         updateDriverLocation();
         pollingInterval = setInterval(updateDriverLocation, 10000);
-        
-        console.log("Stebimas vairuotojas:", serial);
     }
 
     const map = new maplibregl.Map({
@@ -392,14 +367,22 @@
             if(res.success) {
                 console.log("Saved to DB");
                 addMarkToMap(markData);
+                
+                if (res.id) loadedMarkIds.add(res.id);
+                localMarkCount++;
             }
         })
-        .catch(err => console.error("Error:", err));
+        .catch(err => console.error("Error creating manual mark:", err));
+    });
+
+    map.on('load', () => {
+        syncDriverMarks();
+        setInterval(syncDriverMarks, 10000);
     });
 
     map.addControl(new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true
+        trackUserLocation: false 
     }));
 </script>
 
