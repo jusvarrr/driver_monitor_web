@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>DMS Monitor</title>
+    <meta charset='utf-8'>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel='stylesheet' href='https://unpkg.com/maplibre-gl@5.23.0/dist/maplibre-gl.css' />
+    <script src='https://unpkg.com/maplibre-gl@5.23.0/dist/maplibre-gl.js'></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        html, body, #map { height: 100%; }
+        .info-box { 
+            position: absolute; 
+            top: 20px; 
+            right: 20px; 
+            background: rgba(255, 255, 255, 0.9); 
+            z-index: 10; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 0 15px rgba(0,0,0,0.2); 
+            font-family: sans-serif;
+            min-width: 200px;
+        }
+        #status { font-weight: bold; color: #d32f2f; }
+
+        .info-box { top: 70px !important; }
+
+        .driver-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .driver-item:hover { background: #f0f7ff; }
+        .driver-item.active { 
+            background: #e3f2fd; 
+            border-left: 4px solid #1976d2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="info-box">
+    <div style="font-size: 1.1em; margin-bottom: 5px;"> DMS Monitor</div>
+    <div id="driver-id">ID: Waiting...</div>
+    <div id="status">GPS: Waiting...</div>
+    <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
+    
+    <div style="font-size: 0.9em; font-weight: bold; margin-bottom: 5px;">History interval:</div>
+    <input type="datetime-local" id="hist-from" style="width: 100%; padding: 4px; margin-bottom: 5px; box-sizing: border-box;">
+    <input type="datetime-local" id="hist-to" style="width: 100%; padding: 4px; margin-bottom: 8px; box-sizing: border-box;">
+    <button onclick="loadHistoryTrack()" style="width: 100%; padding: 6px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Filter history route</button>
+</div>
+
+<div id="auth-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 1000; display: flex; align-items: center; justify-content: center; font-family: sans-serif;">
+    <div style="width: 300px; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+        <h2 id="auth-title">Login</h2>
+        
+        <input type="text" id="auth-user" placeholder="User Name" style="width: 90%; padding: 10px; margin-bottom: 10px;"><br>
+        <input type="password" id="auth-pass" placeholder="Password" style="width: 90%; padding: 10px; margin-bottom: 10px;"><br>
+        
+        <div id="register-fields" style="display: none;">
+            <input type="text" id="reg-name" placeholder="User Real Name" style="width: 90%; padding: 10px; margin-bottom: 10px;"><br>
+            <input type="text" id="reg-surname" placeholder="User Real Surname" style="width: 90%; padding: 10px; margin-bottom: 10px;"><br>
+            <input type="email" id="reg-email" placeholder="Email address" style="width: 90%; padding: 10px; margin-bottom: 10px;"><br>
+        </div>
+
+        <button onclick="handleAuth()" id="auth-btn" style="width: 100%; padding: 10px; background: #1976d2; color: white; border: none; cursor: pointer;">Confirm</button>
+        <p style="text-align: center; font-size: 0.8em; margin-top: 10px;">
+            <a href="#" onclick="toggleAuthMode()" id="auth-toggle">Register</a>
+        </p>
+    </div>
+</div>
+
+<div id="side-panel" style="position: fixed; top: 50px; left: -250px; width: 250px; height: calc(100% - 50px); background: white; z-index: 600; transition: 0.3s; box-shadow: 2px 0 5px rgba(0,0,0,0.1); font-family: sans-serif; display: flex; flex-direction: column;">
+    <div style="padding: 15px; background: #f4f4f4; border-bottom: 1px solid #ddd; font-weight: bold; display: flex; justify-content: space-between;">
+        Monitored drivers
+        <button onclick="toggleAddDeviceModal(true)" style="width: 90%; margin: 10px auto; padding: 8px; background: #2e7d32; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Add tracking device</button>
+        <button onclick="togglePanel()" style="cursor: pointer; border: none; background: none;">Close</button>
+    </div>
+    <div id="driver-list" style="overflow-y: auto; flex-grow: 1; padding: 10px;">
+        Loading...
+    </div>
+</div>
+
+<button onclick="togglePanel()" style="position: fixed; top: 60px; left: 10px; z-index: 550; padding: 10px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Drivers</button>
+
+<div id="navbar" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 50px; background: #1976d2; color: white; z-index: 500; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+    <div style="font-weight: bold; font-size: 1.2em;">DMS Monitor</div>
+    <div style="display: flex; align-items: center; gap: 20px;">
+        <span id="user-display">Driver: -</span>
+        <button onclick="logout()" style="background: #d32f2f; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">Atsijungti</button>
+    </div>
+</div>
+
+<div id="add-device-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; display: none; align-items: center; justify-content: center; font-family: sans-serif;">
+    <div style="background: white; padding: 20px; border-radius: 8px; width: 320px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+        <h3 style="margin-top: 0; color: #1976d2;">New Tracker</h3>
+        
+        <div style="font-size: 0.85em; color: #666; font-weight: bold; margin-bottom: 5px;">Device owner</div>
+        <input type="text" id="dev-owner-name" placeholder="Name" style="width: 100%; padding: 8px; margin-bottom: 8px; box-sizing: border-box;">
+        <input type="text" id="dev-owner-surname" placeholder="Last name" style="width: 100%; padding: 8px; margin-bottom: 8px; box-sizing: border-box;">
+        <input type="text" id="dev-owner-phone" placeholder="Phone nr." style="width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box;">
+        
+        <div style="font-size: 0.85em; color: #666; font-weight: bold; margin-bottom: 5px;">Tracker device</div>
+        <input type="text" id="dev-tracker-name" placeholder="Name" style="width: 100%; padding: 8px; margin-bottom: 8px; box-sizing: border-box;">
+        <input type="text" id="dev-tracker-serial" placeholder="Serial Number (REQUIRED)" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box;">
+        
+        <div style="display: flex; gap: 10px;">
+            <button onclick="handleAddDevice()" style="flex: 1; padding: 10px; background: #2e7d32; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Išsaugoti</button>
+            <button onclick="toggleAddDeviceModal(false)" style="flex: 1; padding: 10px; background: #757575; color: white; border: none; border-radius: 4px; cursor: pointer;">Atšaukti</button>
+        </div>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script>
+    let isRegisterMode = false;
+    let selectedDriverSerial = null;
+    const markers = {};
+    let pollingInterval = null;
+
+    function toggleAuthMode() {
+        isRegisterMode = !isRegisterMode;
+        document.getElementById('auth-title').innerText = isRegisterMode ? "Registration" : "Login";
+        document.getElementById('register-fields').style.display = isRegisterMode ? "block" : "none";
+        document.getElementById('auth-btn').innerText = isRegisterMode ? "Register" : "Login";
+        document.getElementById('auth-toggle').innerText = isRegisterMode ? "No account? Loggin In" : "Register";
+    }
+
+    function handleAuth() {
+        const username = document.getElementById('auth-user').value;
+        const password = document.getElementById('auth-pass').value;
+        
+        const endpoint = isRegisterMode ? '/register' : '/login';
+        const body = { username, password };
+        
+        if (isRegisterMode) {
+            body.name = document.getElementById('reg-name').value;
+            body.surname = document.getElementById('reg-surname').value;
+            body.email = document.getElementById('reg-email').value;
+        }
+
+        fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                if (isRegisterMode) {
+                    alert("Registered successfully.");
+                    toggleAuthMode();
+                } else {
+                    document.getElementById('auth-container').style.display = 'none';
+                    document.getElementById('navbar').style.display = 'flex';
+                    document.getElementById('user-display').innerText = `User: ${data.user.username}`;
+                    console.log("Logged in:", data.user);
+                }
+            } else {
+                alert(data.error);
+            }
+        });
+    }
+
+    function logout() {
+        fetch('/logout', { method: 'POST' })
+        .then(() => {
+            window.location.reload();
+        });
+    }
+
+    function togglePanel() {
+        const panel = document.getElementById('side-panel');
+        panel.style.left = panel.style.left === '0px' ? '-250px' : '0px';
+        if (panel.style.left === '0px') fetchDrivers();
+    }
+
+    function toggleAddDeviceModal(show) {
+        document.getElementById('add-device-modal').style.display = show ? 'flex' : 'none';
+    }
+
+    function handleAddDevice() {
+        const ownerData = {
+            name: document.getElementById('dev-owner-name').value,
+            surname: document.getElementById('dev-owner-surname').value,
+            phone_number: document.getElementById('dev-owner-phone').value
+        };
+
+        const deviceData = {
+            name: document.getElementById('dev-tracker-name').value,
+            serial_number: document.getElementById('dev-tracker-serial').value
+        };
+
+        if (!ownerData.name || !deviceData.serial_number) {
+            alert("Name and serial number required!");
+            return;
+        }
+
+        fetch('/add-device', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ owner: ownerData, device: deviceData })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert("Tracker device and owner info added!");
+                toggleAddDeviceModal(false);
+                fetchDrivers();
+            } else {
+                alert("Error: " + data.error);
+            }
+        })
+        .catch(err => console.error("Error adding device:", err));
+    }
+
+    function fetchDrivers() {
+        fetch('/my-drivers')
+            .then(res => res.json())
+            .then(data => {
+                const list = document.getElementById('driver-list');
+                list.innerHTML = "";
+                if (data.drivers.length === 0) {
+                    list.innerHTML = "No monitored devices found.";
+                    return;
+                }
+                data.drivers.forEach(driver => {
+                    const div = document.createElement('div');
+                    div.style = `padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; transition: 0.2s; ${selectedDriverSerial === driver.serial_number ? 'background: #e3f2fd; font-weight: bold;' : ''}`;
+                    div.innerText = `${driver.car_model || 'Device'} (${driver.serial_number})`;
+                    div.onclick = () => selectDriver(driver.serial_number);
+                    list.appendChild(div);
+                });
+            });
+    }
+
+    const mockKaunasRoute = [
+        [23.9645, 54.8963],
+        [23.9472, 54.8941],
+        [23.9261, 54.9125],
+        [23.9312, 54.9285],
+        [23.9050, 54.9360],
+        [23.8894, 54.9388]
+    ];
+
+    function loadHistoryTrack() {
+        if (!selectedDriverSerial) {
+            alert("Choose driver!");
+            return;
+        }
+
+        console.log(`Loading history: ${selectedDriverSerial}`);
+
+        const geojsonData = {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+                "type": "LineString",
+                "coordinates": mockKaunasRoute
+            }
+        };
+
+        if (map.getSource('history-route')) {
+            map.getSource('history-route').setData(geojsonData);
+        } else {
+            map.addSource('history-route', {
+                'type': 'geojson',
+                'data': geojsonData
+            });
+
+            map.addLayer({
+                'id': 'history-layer',
+                'type': 'line',
+                'source': 'history-route',
+                'layout': {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                'paint': {
+                    'line-color': '#1976d2',
+                    'line-width': 5,
+                    'line-dasharray': [1, 1]
+                }
+            });
+        }
+
+        map.flyTo({
+            center: mockKaunasRoute[0],
+            zoom: 12,
+            speed: 0.8
+        });
+    }
+
+    function updateDriverLocation() {
+        if (!selectedDriverSerial) return;
+
+        fetch(`/driver-location/${selectedDriverSerial}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const { lat, long, name, time } = data;
+                    
+                    document.getElementById('driver-id').innerText = `ID: ${name || selectedDriverSerial}`;
+                    document.getElementById('status').innerText = `Atnaujinta: ${new Date(time).toLocaleTimeString()}`;
+                    document.getElementById('status').style.color = "green";
+
+                    if (markers[selectedDriverSerial]) {
+                        markers[selectedDriverSerial].setLngLat([long, lat]);
+                    } else {
+                        markers[selectedDriverSerial] = new maplibregl.Marker({ color: '#ff0000' })
+                            .setLngLat([long, lat])
+                            .setPopup(new maplibregl.Popup().setHTML(`<b>${name}</b>`))
+                            .addTo(map);
+                    }
+
+                    map.flyTo({ center: [long, lat], speed: 0.5 });
+                }
+            })
+            .catch(err => {
+                console.error("Polling error:", err);
+                document.getElementById('status').innerText = "Netwrok error";
+                document.getElementById('status').style.color = "red";
+            });
+    }
+
+    function selectDriver(serial) {
+        selectedDriverSerial = serial;
+        console.log("Dislayed device:", serial);
+
+        if (pollingInterval) clearInterval(pollingInterval);
+        
+        Object.keys(markers).forEach(id => {
+            if (id !== serial) {
+                markers[id].remove();
+                delete markers[id];
+            }
+        });
+
+        updateDriverLocation();
+        pollingInterval = setInterval(updateDriverLocation, 10000);
+        
+        console.log("Stebimas vairuotojas:", serial);
+    }
+
+    const map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://tiles.openfreemap.org/styles/bright',
+        center: [23.9036, 54.8985],
+        zoom: 13
+    });
+
+    function addMarkToMap(mark) {
+        let color = '#3fb1ce';
+        if (mark.type === 'markedImportant') color = '#f1c40f';
+        if (mark.type === 'markedDangerous') color = '#e74c3c';
+
+        new maplibregl.Marker({ color: color })
+            .setLngLat([mark.long, mark.lat])
+            .setPopup(new maplibregl.Popup().setHTML(`
+                <strong>${mark.name}</strong><br>
+                Type: ${mark.type}<br>
+                Info: ${mark.info}
+            `))
+            .addTo(map);
+    }
+
+    map.on('click', (e) => {
+        const name = prompt("Name:", "No name entered");
+        if (!name) return;
+        const info = prompt("Info:", "No info entered");
+        const type = prompt("Type (markedImportant, markedDangerous, unclassified):", "unclassified");
+
+        const markData = {
+            name: name,
+            long: e.lngLat.lng,
+            lat: e.lngLat.lat,
+            info: info,
+            type: type
+        };
+
+        fetch('/mark', {
+            method: 'POST',
+            body: JSON.stringify(markData),
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(response => response.json())
+        .then(res => {
+            if(res.success) {
+                console.log("Saved to DB");
+                addMarkToMap(markData);
+            }
+        })
+        .catch(err => console.error("Error:", err));
+    });
+
+    map.addControl(new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true
+    }));
+</script>
+
+</body>
+</html>
