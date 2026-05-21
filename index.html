@@ -151,34 +151,39 @@
     let showMarks = true;
     const customMarkInstances = [];
 
-    function syncDriverMarks() {
-        fetch(`/fetchmarked/${lastMarkId}/${localMarkCount}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.sync) return;
+    function syncDriverMarks(serial) {
+    if (!serial) return; 
 
-                if (data.zones && data.zones.length > 0) {
-                    data.zones.forEach(zone => {
-                        if (!loadedMarkIds.has(zone.id_MarkedLocation)) {
-                            
-                            addMarkToMap({
-                                name: zone.mark_name,
-                                long: zone.lon,
-                                lat: zone.lat,
-                                info: zone.info,
-                                type: zone.mark_type
-                            });
+    fetch(`/fetchmarked/${serial}/${lastId}/${localMarkCount}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.fullReset) {
+                customMarkInstances.forEach(m => m.remove());
+                customMarkInstances.length = 0;
+                loadedMarkIds.clear();
+                lastId = 0;
+                localMarkCount = 0;
+            }
+            if (data.sync) return;
 
-                            if (zone.id_MarkedLocation > lastMarkId) {
-                                lastMarkId = zone.id_MarkedLocation;
-                            }
-                            loadedMarkIds.add(zone.id_MarkedLocation);
-                        }
-                    });
-                }
-                localMarkCount = data.count || localMarkCount;
-            })
-            .catch(err => console.error("Error syncing driver marks:", err));
+            if (data.zones && data.zones.length > 0) {
+                data.zones.forEach(zone => {
+                    if (!loadedMarkIds.has(zone.id_MarkedLocation)) {
+                        addMarkToMap({
+                            name: zone.mark_name,
+                            long: zone.lon,
+                            lat: zone.lat,
+                            info: zone.info,
+                            type: zone.mark_type
+                        });
+                        if (zone.id_MarkedLocation > lastId) lastId = zone.id_MarkedLocation;
+                        loadedMarkIds.add(zone.id_MarkedLocation);
+                    }
+                });
+            }
+            localMarkCount = data.count || localMarkCount;
+        })
+        .catch(err => console.error("Error syncing marks:", err));
     }
 
     function toggleAuthMode() {
@@ -307,7 +312,7 @@
                     const { lat, long, name, time } = data;
                     
                     document.getElementById('driver-id').innerText = `ID: ${name || selectedDriverSerial}`;
-                    document.getElementById('status').innerText = `Atnaujinta: ${new Date(time).toLocaleTimeString()}`;
+                    document.getElementById('status').innerText = `Updated: ${new Date(time).toLocaleTimeString()}`;
                     document.getElementById('status').style.color = "green";
 
                     if (markers[selectedDriverSerial]) {
@@ -331,7 +336,14 @@
 
     function selectDriver(serial) {
         selectedDriverSerial = serial;
-        console.log("Displayed device:", serial);
+        lastId = 0;
+        localMarkCount = 0;
+        loadedMarkIds.clear();
+        
+        customMarkInstances.forEach(m => m.remove());
+        customMarkInstances.length = 0;
+
+        syncDriverMarks(serial);
 
         if (pollingInterval) clearInterval(pollingInterval);
         
@@ -343,7 +355,10 @@
         });
 
         updateDriverLocation();
-        pollingInterval = setInterval(updateDriverLocation, 10000);
+        pollingInterval = setInterval(() => {
+            updateDriverLocation();
+            syncDriverMarks(serial);
+        }, 10000);
     }
 
     const map = new maplibregl.Map({
@@ -387,6 +402,60 @@
             btn.style.background = "#e3f2fd";
         }
     }
+
+function loadHistoryTrack() {
+    const serial = currentSelectedSerial;
+    if (!serial) {
+        alert("Please select a driver from the list first.");
+        return;
+    }
+
+    const start = document.getElementById('hist-from').value;
+    const end = document.getElementById('hist-to').value;
+
+    if (!start || !end) {
+        alert("Please select both start and end times.");
+        return;
+    }
+
+    const formattedStart = start.replace('T', ' ');
+    const formattedEnd = end.replace('T', ' ');
+
+    fetch(`/get_history/${serial}?start=${formattedStart}&end=${formattedEnd}`)
+        .then(res => res.json())
+        .then(geojson => {
+            if (map.getSource('routeSource')) {
+                map.getSource('routeSource').setData({
+                    'type': 'Feature',
+                    'geometry': geojson
+                });
+
+                const coords = geojson.coordinates;
+                if (coords && coords.length > 0) {
+                    let minLon = coords[0][0], maxLon = coords[0][0];
+                    let minLat = coords[0][1], maxLat = coords[0][1];
+
+                    coords.forEach(c => {
+                        if (c[0] < minLon) minLon = c[0];
+                        if (c[0] > maxLon) maxLon = c[0];
+                        if (c[1] < minLat) minLat = c[1];
+                        if (c[1] > maxLat) maxLat = c[1];
+                    });
+
+                    map.fitBounds([
+                        [minLon, minLat],
+                        [maxLon, maxLat]
+                    ], {
+                        padding: 50,
+                        duration: 1500
+                    });
+                }
+            } else {
+                console.error("Map route source not initialized.");
+            }
+        })
+        .catch(err => console.error("History fetch error:", err));
+}
 
     map.on('click', (e) => {
         const name = prompt("Name:", "No name entered");

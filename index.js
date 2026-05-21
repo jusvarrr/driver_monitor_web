@@ -151,23 +151,42 @@ async function startServer() {
         }
     });
 
-    app.get('/fetchmarked/:lastId/:localCount', (req, res) => {
+    app.get('/fetchmarked/:serial/:lastId/:localCount', (req, res) => {
+        const serial = req.params.serial;
         const lastId = parseInt(req.params.lastId);
         const localCount = parseInt(req.params.localCount);
-        const countQuery = 'SELECT COUNT(*) as total FROM MarkedLocation';
-        db.query(countQuery, (err, countResult) => {
+
+        const countQuery = `
+            SELECT COUNT(*) as total 
+            FROM MarkedLocation ml
+            JOIN TrackerDevice td ON ml.fk_TrackerDevice = td.id_TrackerDevice
+            WHERE td.serial_number = ?
+        `;
+
+        db.query(countQuery, [serial], (err, countResult) => {
             if (err) return res.status(500).json({ error: err.message });
             const serverCount = countResult[0].total;
+
             if (serverCount === localCount) {
                 return res.json({ sync: true, zones: [] });
             }
 
-            const fetchQuery = 'SELECT * FROM MarkedLocation WHERE id_MarkedLocation > ?';
-            db.query(fetchQuery, [lastId], (err, zones) => {
+            const fetchQuery = `
+                SELECT ml.* FROM MarkedLocation ml
+                JOIN TrackerDevice td ON ml.fk_TrackerDevice = td.id_TrackerDevice
+                WHERE td.serial_number = ? AND ml.id_MarkedLocation > ?
+            `;
+            
+            db.query(fetchQuery, [serial, lastId], (err, zones) => {
                 if (err) return res.status(500).json({ error: err.message });
+                
                 if (zones.length + localCount !== serverCount) {
-                    const allQuery = 'SELECT * FROM MarkedLocation';
-                    db.query(allQuery, (err, allZones) => {
+                    const allQuery = `
+                        SELECT ml.* FROM MarkedLocation ml
+                        JOIN TrackerDevice td ON ml.fk_TrackerDevice = td.id_TrackerDevice
+                        WHERE td.serial_number = ?
+                    `;
+                    db.query(allQuery, [serial], (err, allZones) => {
                         if (err) return res.status(500).json({ error: err.message });
                         res.json({ sync: false, fullReset: true, zones: allZones, count: serverCount });
                     });
@@ -248,6 +267,32 @@ async function startServer() {
             //     }
             //     res.json({ success: true, id: result.insertId });
             // });
+        });
+    });
+
+    app.get('/get_history/:serial', (req, res) => {
+        const { serial } = req.params;
+        const { start, end } = req.query;
+
+        let query = `
+            SELECT the.lon, the.lat 
+            FROM travelhistoryevent the
+            JOIN trackerdevice td ON the.fk_TrackerDevice = td.id_TrackerDevice
+            WHERE td.serial_number = ?
+        `;
+        const params = [serial];
+
+        if (start && end) {
+            query += ` AND the.timestamp BETWEEN ? AND ?`;
+            params.push(start, end);
+        }
+
+        query += ` ORDER BY the.timestamp ASC`;
+
+        db.query(query, params, (err, results) => {
+            if (err) return res.status(500).json({ error: err.message });
+            const coords = results.map(row => [row.lon, row.lat]);
+            res.json({ type: 'LineString', coordinates: coords });
         });
     });
 
