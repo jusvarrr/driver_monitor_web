@@ -144,46 +144,47 @@
     const markers = {};
     let pollingInterval = null;
 
-    let lastMarkId = 0;
+    let lastId = 0;
     let localMarkCount = 0;
     const loadedMarkIds = new Set();
 
     let showMarks = true;
     const customMarkInstances = [];
+    let currentSelectedSerial = null;
 
     function syncDriverMarks(serial) {
-    if (!serial) return; 
+        if (!serial) return;
+        
+        fetch(`/fetchmarked/${serial}/${lastId}/${localMarkCount}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.fullReset) {
+                    customMarkInstances.forEach(m => m.remove());
+                    customMarkInstances.length = 0;
+                    loadedMarkIds.clear();
+                    lastId = 0;
+                    localMarkCount = 0;
+                }
+                if (data.sync) return;
 
-    fetch(`/fetchmarked/${serial}/${lastId}/${localMarkCount}`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.fullReset) {
-                customMarkInstances.forEach(m => m.remove());
-                customMarkInstances.length = 0;
-                loadedMarkIds.clear();
-                lastId = 0;
-                localMarkCount = 0;
-            }
-            if (data.sync) return;
-
-            if (data.zones && data.zones.length > 0) {
-                data.zones.forEach(zone => {
-                    if (!loadedMarkIds.has(zone.id_MarkedLocation)) {
-                        addMarkToMap({
-                            name: zone.mark_name,
-                            long: zone.lon,
-                            lat: zone.lat,
-                            info: zone.info,
-                            type: zone.mark_type
-                        });
-                        if (zone.id_MarkedLocation > lastId) lastId = zone.id_MarkedLocation;
-                        loadedMarkIds.add(zone.id_MarkedLocation);
-                    }
-                });
-            }
-            localMarkCount = data.count || localMarkCount;
-        })
-        .catch(err => console.error("Error syncing marks:", err));
+                if (data.zones && data.zones.length > 0) {
+                    data.zones.forEach(zone => {
+                        if (!loadedMarkIds.has(zone.id_MarkedLocation)) {
+                            addMarkToMap({
+                                name: zone.mark_name,
+                                long: zone.lon,
+                                lat: zone.lat,
+                                info: zone.info,
+                                type: zone.mark_type
+                            });
+                            if (zone.id_MarkedLocation > lastId) lastId = zone.id_MarkedLocation;
+                            loadedMarkIds.add(zone.id_MarkedLocation);
+                        }
+                    });
+                }
+                localMarkCount = data.count || localMarkCount;
+            })
+            .catch(err => console.error("Error syncing marks:", err));
     }
 
     function toggleAuthMode() {
@@ -222,7 +223,6 @@
                     document.getElementById('auth-container').style.display = 'none';
                     document.getElementById('navbar').style.display = 'flex';
                     document.getElementById('user-display').innerText = `User: ${data.user.username}`;
-                    console.log("Logged in:", data.user);
                 }
             } else {
                 alert(data.error);
@@ -232,9 +232,7 @@
 
     function logout() {
         fetch('/logout', { method: 'POST' })
-        .then(() => {
-            window.location.reload();
-        });
+        .then(() => window.location.reload());
     }
 
     function togglePanel() {
@@ -278,8 +276,7 @@
             } else {
                 alert("Error: " + data.error);
             }
-        })
-        .catch(err => console.error("Error adding device:", err));
+        });
     }
 
     function fetchDrivers() {
@@ -302,40 +299,9 @@
             });
     }
 
-    function updateDriverLocation() {
-        if (!selectedDriverSerial) return;
-
-        fetch(`/driver-location/${selectedDriverSerial}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    const { lat, long, name, time } = data;
-                    
-                    document.getElementById('driver-id').innerText = `ID: ${name || selectedDriverSerial}`;
-                    document.getElementById('status').innerText = `Updated: ${new Date(time).toLocaleTimeString()}`;
-                    document.getElementById('status').style.color = "green";
-
-                    if (markers[selectedDriverSerial]) {
-                        markers[selectedDriverSerial].setLngLat([long, lat]);
-                    } else {
-                        markers[selectedDriverSerial] = new maplibregl.Marker({ color: '#ff0000' })
-                            .setLngLat([long, lat])
-                            .setPopup(new maplibregl.Popup().setHTML(`<b>${name}</b>`))
-                            .addTo(map);
-                    }
-
-                    map.flyTo({ center: [long, lat], speed: 0.5 });
-                }
-            })
-            .catch(err => {
-                console.error("Polling error:", err);
-                document.getElementById('status').innerText = "Network error";
-                document.getElementById('status').style.color = "red";
-            });
-    }
-
     function selectDriver(serial) {
         selectedDriverSerial = serial;
+        currentSelectedSerial = serial;
         lastId = 0;
         localMarkCount = 0;
         loadedMarkIds.clear();
@@ -361,6 +327,36 @@
         }, 10000);
     }
 
+    function updateDriverLocation() {
+        if (!selectedDriverSerial) return;
+
+        fetch(`/driver-location/${selectedDriverSerial}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const { lat, long, name, time } = data;
+                    document.getElementById('driver-id').innerText = `ID: ${name || selectedDriverSerial}`;
+                    document.getElementById('status').innerText = `Updated: ${new Date(time).toLocaleTimeString()}`;
+                    document.getElementById('status').style.color = "green";
+
+                    if (markers[selectedDriverSerial]) {
+                        markers[selectedDriverSerial].setLngLat([long, lat]);
+                    } else {
+                        markers[selectedDriverSerial] = new maplibregl.Marker({ color: '#ff0000' })
+                            .setLngLat([long, lat])
+                            .setPopup(new maplibregl.Popup().setHTML(`<b>${name}</b>`))
+                            .addTo(map);
+                    }
+                    map.flyTo({ center: [long, lat], speed: 0.5 });
+                }
+            })
+            .catch(err => {
+                console.error("Polling error:", err);
+                document.getElementById('status').innerText = "Network error";
+                document.getElementById('status').style.color = "red";
+            });
+    }
+
     const map = new maplibregl.Map({
         container: 'map',
         style: 'https://tiles.openfreemap.org/styles/bright',
@@ -379,19 +375,17 @@
                 <strong>${mark.name}</strong><br>
                 Type: ${mark.type}<br>
                 Info: ${mark.info}
-            `))
+            `));
 
         if (showMarks) {
             markerInstance.addTo(map);
         }
-
         customMarkInstances.push(markerInstance);
     }
 
     function toggleMarks() {
         showMarks = !showMarks;
         const btn = document.getElementById('toggle-marks-btn');
-
         if (showMarks) {
             customMarkInstances.forEach(marker => marker.addTo(map));
             btn.innerText = "Hide marks";
@@ -403,59 +397,47 @@
         }
     }
 
-function loadHistoryTrack() {
-    const serial = currentSelectedSerial;
-    if (!serial) {
-        alert("Please select a driver from the list first.");
-        return;
-    }
+    function loadHistoryTrack() {
+        const serial = currentSelectedSerial;
+        if (!serial) {
+            alert("Please select a driver from the list first.");
+            return;
+        }
+        const start = document.getElementById('hist-from').value;
+        const end = document.getElementById('hist-to').value;
 
-    const start = document.getElementById('hist-from').value;
-    const end = document.getElementById('hist-to').value;
+        if (!start || !end) {
+            alert("Please select both start and end times.");
+            return;
+        }
 
-    if (!start || !end) {
-        alert("Please select both start and end times.");
-        return;
-    }
+        const formattedStart = start.replace('T', ' ');
+        const formattedEnd = end.replace('T', ' ');
 
-    const formattedStart = start.replace('T', ' ');
-    const formattedEnd = end.replace('T', ' ');
-
-    fetch(`/get_history/${serial}?start=${formattedStart}&end=${formattedEnd}`)
-        .then(res => res.json())
-        .then(geojson => {
-            if (map.getSource('routeSource')) {
-                map.getSource('routeSource').setData({
-                    'type': 'Feature',
-                    'geometry': geojson
-                });
-
-                const coords = geojson.coordinates;
-                if (coords && coords.length > 0) {
-                    let minLon = coords[0][0], maxLon = coords[0][0];
-                    let minLat = coords[0][1], maxLat = coords[0][1];
-
-                    coords.forEach(c => {
-                        if (c[0] < minLon) minLon = c[0];
-                        if (c[0] > maxLon) maxLon = c[0];
-                        if (c[1] < minLat) minLat = c[1];
-                        if (c[1] > maxLat) maxLat = c[1];
+        fetch(`/get_history/${serial}?start=${formattedStart}&end=${formattedEnd}`)
+            .then(res => res.json())
+            .then(geojson => {
+                if (map.getSource('routeSource')) {
+                    map.getSource('routeSource').setData({
+                        'type': 'Feature',
+                        'geometry': geojson
                     });
-
-                    map.fitBounds([
-                        [minLon, minLat],
-                        [maxLon, maxLat]
-                    ], {
-                        padding: 50,
-                        duration: 1500
-                    });
+                    const coords = geojson.coordinates;
+                    if (coords && coords.length > 0) {
+                        let minLon = coords[0][0], maxLon = coords[0][0];
+                        let minLat = coords[0][1], maxLat = coords[0][1];
+                        coords.forEach(c => {
+                            if (c[0] < minLon) minLon = c[0];
+                            if (c[0] > maxLon) maxLon = c[0];
+                            if (c[1] < minLat) minLat = c[1];
+                            if (c[1] > maxLat) maxLat = c[1];
+                        });
+                        map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 50, duration: 1500 });
+                    }
                 }
-            } else {
-                console.error("Map route source not initialized.");
-            }
-        })
-        .catch(err => console.error("History fetch error:", err));
-}
+            })
+            .catch(err => console.error("History fetch error:", err));
+    }
 
     map.on('click', (e) => {
         const name = prompt("Name:", "No name entered");
@@ -479,9 +461,7 @@ function loadHistoryTrack() {
         .then(response => response.json())
         .then(res => {
             if(res.success) {
-                console.log("Saved to DB");
                 addMarkToMap(markData);
-                
                 if (res.id) loadedMarkIds.add(res.id);
                 localMarkCount++;
             }
@@ -490,8 +470,9 @@ function loadHistoryTrack() {
     });
 
     map.on('load', () => {
-        syncDriverMarks();
-        setInterval(syncDriverMarks, 10000);
+        setInterval(() => {
+             if (currentSelectedSerial) syncDriverMarks(currentSelectedSerial);
+        }, 10000);
     });
 
     map.addControl(new maplibregl.GeolocateControl({
