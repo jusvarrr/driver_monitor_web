@@ -270,6 +270,55 @@ async function startServer() {
         });
     });
 
+    app.post('/add-device', (req, res) => {
+        if (!req.session.user) {
+            return res.status(401).json({ error: "Unauthorized. Please log in." });
+        }
+
+        const { owner, device } = req.body;
+        const userId = req.session.user.id;
+
+        db.getConnection((err, connection) => {
+            if (err) return res.status(500).json({ error: "Database error" });
+
+            connection.beginTransaction((err) => {
+                if (err) { connection.release(); return res.status(500).json({ error: "Transaction start failed" }); }
+
+                const ownerSql = "INSERT INTO deviceowner (name, surname, phone_number, fk_Userid_User) VALUES (?, ?, ?, ?)";
+                connection.query(ownerSql, [owner.name, owner.surname, owner.phone_number, userId], (err, ownerResult) => {
+                    if (err) {
+                        return connection.rollback(() => {
+                            connection.release();
+                            res.status(500).json({ error: "Failed to add owner" });
+                        });
+                    }
+
+                    const ownerId = ownerResult.insertId;
+                    const deviceSql = "INSERT INTO trackerdevice (name, serial_number, fk_DeviceOwnerid_DeviceOwner) VALUES (?, ?, ?)";
+                    connection.query(deviceSql, [device.name, device.serial_number, ownerId], (err, deviceResult) => {
+                        if (err) {
+                            return connection.rollback(() => {
+                                connection.release();
+                                res.status(500).json({ error: "Failed to add device (Serial number might already exist)" });
+                            });
+                        }
+
+                        connection.commit((err) => {
+                            if (err) {
+                                return connection.rollback(() => {
+                                    connection.release();
+                                    res.status(500).json({ error: "Commit failed" });
+                                });
+                            }
+                            connection.release();
+                            res.json({ success: true, ownerId, deviceId: deviceResult.insertId });
+                        });
+                    });
+                });
+            });
+        });
+    });
+
     app.get('/get_history/:serial', (req, res) => {
         const { serial } = req.params;
         const { start, end } = req.query;
