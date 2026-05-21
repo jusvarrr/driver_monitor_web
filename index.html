@@ -72,6 +72,9 @@
     <input type="datetime-local" id="hist-from" style="width: 100%; padding: 4px; margin-bottom: 5px; box-sizing: border-box;">
     <input type="datetime-local" id="hist-to" style="width: 100%; padding: 4px; margin-bottom: 8px; box-sizing: border-box;">
     <button onclick="loadHistoryTrack()" style="width: 100%; padding: 6px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Filter history route</button>
+    <button onclick="toggleHistoryRoute()" style="margin-top: 10px; width: 100%; padding: 8px;">
+        Toggle Route Visibility
+    </button>
 </div>
 
 <div id="auth-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 1000; display: flex; align-items: center; justify-content: center; font-family: sans-serif;">
@@ -394,6 +397,22 @@
             customMarkInstances.forEach(marker => marker.remove());
             btn.innerText = "Show marks";
             btn.style.background = "#e3f2fd";
+        }
+    }
+
+    function toggleHistoryRoute() {
+    const layerId = 'routeLayer';
+    
+        if (map.getLayer(layerId)) {
+            const visibility = map.getLayoutProperty(layerId, 'visibility');
+            
+            if (visibility === 'visible') {
+                map.setLayoutProperty(layerId, 'visibility', 'none');
+            } else {
+                map.setLayoutProperty(layerId, 'visibility', 'visible');
+            }
+        } else {
+            alert("No route is currently loaded.");
         }
     }
 
