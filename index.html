@@ -417,24 +417,51 @@
         fetch(`/get_history/${serial}?start=${formattedStart}&end=${formattedEnd}`)
             .then(res => res.json())
             .then(geojson => {
-                if (map.getSource('routeSource')) {
-                    map.getSource('routeSource').setData({
-                        'type': 'Feature',
-                        'geometry': geojson
-                    });
-                    const coords = geojson.coordinates;
-                    if (coords && coords.length > 0) {
-                        let minLon = coords[0][0], maxLon = coords[0][0];
-                        let minLat = coords[0][1], maxLat = coords[0][1];
-                        coords.forEach(c => {
-                            if (c[0] < minLon) minLon = c[0];
-                            if (c[0] > maxLon) maxLon = c[0];
-                            if (c[1] < minLat) minLat = c[1];
-                            if (c[1] > maxLat) maxLat = c[1];
-                        });
-                        map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 50, duration: 1500 });
-                    }
+                // Check if we actually got coordinates back
+                if (!geojson.coordinates || geojson.coordinates.length === 0) {
+                    alert("No history data found for this timeframe.");
+                    return;
                 }
+
+                const sourceId = 'routeSource';
+                const layerId = 'routeLayer';
+                
+                // Create the Feature object
+                const feature = {
+                    'type': 'Feature',
+                    'geometry': geojson // This is the LineString from your backend
+                };
+
+                // 1. If source exists, update data; otherwise create it
+                if (map.getSource(sourceId)) {
+                    map.getSource(sourceId).setData(feature);
+                } else {
+                    map.addSource(sourceId, {
+                        'type': 'geojson',
+                        'data': feature
+                    });
+                    
+                    // 2. Add the layer that styles this source
+                    map.addLayer({
+                        'id': layerId,
+                        'type': 'line',
+                        'source': sourceId,
+                        'layout': {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        'paint': {
+                            'line-color': '#1976d2', // Pick a color (e.g., blue)
+                            'line-width': 4,
+                            'line-opacity': 0.8
+                        }
+                    });
+                }
+
+                // 3. Fit bounds
+                const bounds = new maplibregl.LngLatBounds();
+                geojson.coordinates.forEach(coord => bounds.extend(coord));
+                map.fitBounds(bounds, { padding: 50, duration: 1500 });
             })
             .catch(err => console.error("History fetch error:", err));
     }
