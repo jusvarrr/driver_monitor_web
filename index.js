@@ -255,28 +255,19 @@ async function startServer() {
                                                     info: data.info,
                                                     type: data.type });
 
-            mqttClient.publish('monitorer/1/marked', markPayload); // i will hardcode monitorer id for the prototype
+            mqttClient.publish('monitorer/1/marked', markPayload);
             res.json({ success: true, id: result.insertId });
 
-            // db.query('SELECT COUNT(*) as total FROM MarkedLocation', (err, countResult) => {
-            //     if (!err) {
-            //         const total = countResult[0].total;
-            //         //const syncPayload = JSON.stringify({ count: total, last_id: result.insertId });
-                    
-            //         //mqttClient.publish('monitorer/marked/sync', syncPayload); cia jei kazkada daryciau sync logika
-            //     }
-            //     res.json({ success: true, id: result.insertId });
-            // });
         });
     });
 
     app.post('/add-device', (req, res) => {
-        if (!req.session.user) {
+        if (!req.session.userId) {
             return res.status(401).json({ error: "Unauthorized. Please log in." });
         }
 
         const { owner, device } = req.body;
-        const userId = req.session.user.id;
+        const userId = req.session.userId;
 
         db.getConnection((err, connection) => {
             if (err) return res.status(500).json({ error: "Database error" });
