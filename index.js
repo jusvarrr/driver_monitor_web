@@ -81,6 +81,18 @@ const isAuthenticated = (req, res, next) => {
 async function startServer() {
     const aedes = await Aedes.Aedes.createBroker();
 
+    aedes.on('clientError', (client, err) => {
+        console.log('MQTT Client Error:', client ? client.id : 'unknown', err.message);
+    });
+
+    aedes.on('connectionError', (client, err) => {
+        console.log('MQTT Connection Error:', client ? client.id : 'unknown', err.message);
+    });
+
+    aedes.on('subscribe', (subscriptions, client) => {
+        console.log('MQTT Subscription request:', subscriptions.map(s => s.topic), 'from client:', client ? client.id : 'unknown');
+    });
+
     const mqttServer = net.createServer(aedes.handle);
     mqttServer.listen(1883, '0.0.0.0', () => {
         console.log('MQTT: 1883');
