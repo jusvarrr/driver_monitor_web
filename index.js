@@ -121,7 +121,7 @@ async function startServer() {
         const type = topicParts[1]
 
         try {
-            if (packet.topic.startsWith('$SYS')) return;
+            if (packet.topic.startsWith('$SYS') || packet.topic.startsWith('#')) return;
             if (sender === 'driver') {
 
                 const serial_number = topicParts[2]
