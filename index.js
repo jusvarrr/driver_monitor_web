@@ -225,29 +225,32 @@ async function startServer() {
         });
     });
 
-    app.get('/driver-location/:serial', isAuthenticated, (req, res) => {
-        const serial = req.params.serial;
+    app.get('/get_history/:serial', isAuthenticated, (req, res) => {
+        const { start, end } = req.query;
+        
+        // 1. Convert the incoming local date strings (e.g., '2026-05-24 12:00') 
+        // to UTC date objects
+        const startDate = new Date(start.replace(' ', 'T'));
+        const endDate = new Date(end.replace(' ', 'T'));
+
+        // 2. Convert to ISO format (UTC string) for the SQL query
+        const startUTC = startDate.toISOString().replace('T', ' ').slice(0, 19);
+        const endUTC = endDate.toISOString().replace('T', ' ').slice(0, 19);
+
+        // Now query the DB using the normalized UTC strings
         const query = `
-            SELECT td.last_lat, td.last_long, td.last_updated, td.name
-            FROM TrackerDevice td
-            JOIN DeviceOwner do ON td.fk_DeviceOwnerid_DeviceOwner = do.id_DeviceOwner
-            WHERE td.serial_number = ? AND do.fk_Userid_User = ?
+            SELECT lat, lon 
+            FROM TravelHistoryEvent 
+            WHERE fk_TrackerDevice = (SELECT id_TrackerDevice FROM TrackerDevice WHERE serial_number = ?)
+            AND timestamp BETWEEN ? AND ?
         `;
 
-        db.query(query, [serial, req.session.userId], (err, results) => {
+        db.query(query, [req.params.serial, startUTC, endUTC], (err, results) => {
             if (err) return res.status(500).json({ error: err.message });
-            if (results.length === 0) return res.status(404).json({ error: "Driver not found or access denied" });
-            
-            res.json({
-                success: true,
-                lat: results[0].last_lat,
-                long: results[0].last_long,
-                time: results[0].last_updated,
-                name: results[0].name
-            });
+            res.json({ coordinates: results.map(r => [r.lon, r.lat]) });
         });
     });
-
+    
     app.get('/my-drivers', isAuthenticated, (req, res) => {
         const query = `
             SELECT td.serial_number, td.name as car_model
