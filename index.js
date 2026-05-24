@@ -170,7 +170,7 @@ async function startServer() {
                 // This catches everything else (the bots/scanners)
                 console.warn(`[WARN] Unauthorized/Unexpected topic: ${packet.topic} from client: ${client ? client.id : 'unknown'}`);
                 // Optional: Close connection for bad actors
-                // client.close(); 
+                client.close(); 
             }
 
         } catch (e) {
