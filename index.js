@@ -342,25 +342,24 @@ async function startServer() {
         const { serial } = req.params;
         const { start, end } = req.query;
 
-        console.log(start);
-        console.log(end);
+        const startDate = new Date(start); 
+        const endDate = new Date(end);
+
+        const startUTC = startDate.toISOString().slice(0, 19).replace('T', ' ');
+        const endUTC = endDate.toISOString().slice(0, 19).replace('T', ' ');
+
+        console.log(`Querying DB for range: ${startUTC} to ${endUTC}`);
 
         let query = `
             SELECT the.lon, the.lat 
             FROM travelhistoryevent the
             JOIN trackerdevice td ON the.fk_TrackerDevice = td.id_TrackerDevice
             WHERE td.serial_number = ?
+            AND the.timestamp BETWEEN ? AND ?
+            ORDER BY the.timestamp ASC
         `;
-        const params = [serial];
 
-        if (start && end) {
-            query += ` AND the.timestamp BETWEEN ? AND ?`;
-            params.push(start, end);
-        }
-
-        query += ` ORDER BY the.timestamp ASC`;
-
-        db.query(query, params, (err, results) => {
+        db.query(query, [serial, startUTC, endUTC], (err, results) => {
             if (err) return res.status(500).json({ error: err.message });
             const coords = results.map(row => [row.lon, row.lat]);
             res.json({ type: 'LineString', coordinates: coords });
