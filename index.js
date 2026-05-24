@@ -93,6 +93,15 @@ async function startServer() {
         console.log('MQTT Subscription request:', subscriptions.map(s => s.topic), 'from client:', client ? client.id : 'unknown');
     });
 
+    aedes.authorizeSubscribe = (client, sub, callback) => {
+    if (sub.topic.startsWith('$SYS')) {
+        console.log(`[SECURITY] Blocked sys-topic subscription from: ${client.id}`);
+        return callback(new Error('Forbidden: $SYS topics are restricted'), null);
+    }
+    
+    callback(null, sub);
+};
+
     const mqttServer = net.createServer(aedes.handle);
     mqttServer.listen(1883, '0.0.0.0', () => {
         console.log('MQTT: 1883');
@@ -112,6 +121,7 @@ async function startServer() {
         const type = topicParts[1]
 
         try {
+            if (packet.topic.startsWith('$SYS')) return;
             if (sender === 'driver') {
 
                 const serial_number = topicParts[2]
@@ -155,8 +165,14 @@ async function startServer() {
                         }
                     });
                     
-                }
+                } 
+            } else {
+                // This catches everything else (the bots/scanners)
+                console.warn(`[WARN] Unauthorized/Unexpected topic: ${packet.topic} from client: ${client ? client.id : 'unknown'}`);
+                // Optional: Close connection for bad actors
+                client.close(); 
             }
+
         } catch (e) {
             console.error("Exception:", e.message);
             console.error("Received:", rawPayload);
