@@ -342,10 +342,24 @@ async function startServer() {
         const { serial } = req.params;
         const { start, end } = req.query;
 
-        const startSql = start + ":00";
-        const endSql = end + ":00";
+        const dStart = new Date(start.replace(' ', 'T'));
+        const dEnd = new Date(end.replace(' ', 'T'));
 
-        console.log(`Querying DB for range: ${startSql} to ${endSql}`);
+        dStart.setHours(dStart.getHours() - 3);
+        dEnd.setHours(dEnd.getHours() - 3);
+
+        const formatSql = (d) => {
+            return d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0') + ' ' +
+                String(d.getHours()).padStart(2, '0') + ':' +
+                String(d.getMinutes()).padStart(2, '0') + ':00';
+        };
+
+        const startSql = formatSql(dStart);
+        const endSql = formatSql(dEnd);
+
+        console.log(`Querying DB for shifted range: ${startSql} to ${endSql}`);
 
         let query = `
             SELECT the.lon, the.lat 
