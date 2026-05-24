@@ -342,13 +342,10 @@ async function startServer() {
         const { serial } = req.params;
         const { start, end } = req.query;
 
-        const startDate = new Date(start); 
-        const endDate = new Date(end);
+        const startSql = start + ":00";
+        const endSql = end + ":00";
 
-        const startUTC = startDate.toISOString().slice(0, 19).replace('T', ' ');
-        const endUTC = endDate.toISOString().slice(0, 19).replace('T', ' ');
-
-        console.log(`Querying DB for range: ${startUTC} to ${endUTC}`);
+        console.log(`Querying DB for range: ${startSql} to ${endSql}`);
 
         let query = `
             SELECT the.lon, the.lat 
@@ -359,7 +356,7 @@ async function startServer() {
             ORDER BY the.timestamp ASC
         `;
 
-        db.query(query, [serial, startUTC, endUTC], (err, results) => {
+        db.query(query, [serial, startSql, endSql], (err, results) => {
             if (err) return res.status(500).json({ error: err.message });
             const coords = results.map(row => [row.lon, row.lat]);
             res.json({ type: 'LineString', coordinates: coords });
