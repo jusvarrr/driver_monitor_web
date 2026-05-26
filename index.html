@@ -370,7 +370,7 @@
     function addMarkToMap(mark) {
         let color = '#3fb1ce';
         if (mark.type === 'markedImportant') color = '#f1c40f';
-        if (mark.type === 'markedDangerous') color = '#e74c3c';
+        if (mark.type === 'markedDangerous') color = '#430e08';
 
         const markerInstance = new maplibregl.Marker({ color: color })
             .setLngLat([mark.long, mark.lat])
