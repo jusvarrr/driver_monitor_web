@@ -436,7 +436,6 @@
         fetch(`/get_history/${serial}?start=${formattedStart}&end=${formattedEnd}`)
             .then(res => res.json())
             .then(geojson => {
-                // Check if we actually got coordinates back
                 if (!geojson.coordinates || geojson.coordinates.length === 0) {
                     alert("No history data found for this timeframe.");
                     return;
@@ -445,13 +444,11 @@
                 const sourceId = 'routeSource';
                 const layerId = 'routeLayer';
                 
-                // Create the Feature object
                 const feature = {
                     'type': 'Feature',
-                    'geometry': geojson // This is the LineString from your backend
+                    'geometry': geojson
                 };
 
-                // 1. If source exists, update data; otherwise create it
                 if (map.getSource(sourceId)) {
                     map.getSource(sourceId).setData(feature);
                 } else {
@@ -460,7 +457,6 @@
                         'data': feature
                     });
                     
-                    // 2. Add the layer that styles this source
                     map.addLayer({
                         'id': layerId,
                         'type': 'line',
@@ -470,14 +466,13 @@
                             'line-cap': 'round'
                         },
                         'paint': {
-                            'line-color': '#1976d2', // Pick a color (e.g., blue)
+                            'line-color': '#1976d2',
                             'line-width': 4,
                             'line-opacity': 0.8
                         }
                     });
                 }
 
-                // 3. Fit bounds
                 const bounds = new maplibregl.LngLatBounds();
                 geojson.coordinates.forEach(coord => bounds.extend(coord));
                 map.fitBounds(bounds, { padding: 50, duration: 1500 });
